@@ -28,13 +28,13 @@ def scrub(file_in, file_out):
     open(file_out, 'wb').close()
     
     scrubbed = cStringIO.StringIO()
-    with open(file_in, 'rb') as inp:
+    with file(file_in, 'rb') as inp:
         byte_order = validate_tiff(inp)
         if byte_order is None:
             raise Exception("Invalid TIFF!")
         walk_tiff(inp, byte_order)
 
-    with open(file_out, 'wb') as output:
+    with file(file_out, 'wb') as output:
         output.write(scrubbed.getvalue())
     scrubbed.close()
 
@@ -96,11 +96,11 @@ def write_value(out, value, byte_order):
     """
     to_write = ""
     while(value):
-        byte = value & 0xff
+        byte = chr(value & 0xff)
         if byte_order == "MM":
-            to_write = "%s%s" % (chr(byte), to_write)
+            to_write = "%s%s" % (byte, to_write)
         elif byte_order == "II":
-            to_write = "%s%s" % (to_write, chr(byte))
+            to_write = "%s%s" % (to_write, byte)
         value >>= 8
     out.write(to_write)
 
