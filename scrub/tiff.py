@@ -71,7 +71,7 @@ def read_field(inp, byte_order):
     count = get_value(read(inp, 4), byte_order) #Vals
     length = count * TYPE_L[val_type] #Length in bytes of data
     offset = read(inp, 4)
-    print "Tag: 0x%x" % tag 
+    print "Tag: 0x%x %s" % (tag, tag in GOOD_TAGS) 
     if False:   #Don't do this right now
         if length <= 4:
             print "Value: %s " % offset
