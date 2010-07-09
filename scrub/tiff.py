@@ -11,7 +11,7 @@ if __name__ == "__main__":
     import sys
 
 #How many bytes each type takes up (there is no 0-type)
-TYPEL = [1, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8]
+TYPE_L = [1, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8]
 #Tags we don't want to strip. http://www.awaresystems.be/imaging/tiff/tifftags.html
 GOOD_TAGS = \
     [0xfe, 0xff, 0x100, 0x101, 0x102, 0x102, 0x103, 0x106, 0x107, 0x108, 0x109,
@@ -22,45 +22,54 @@ GOOD_TAGS = \
     0x154, 0x155, 0x156, 0x157, 0x158, 0x159, 0x15a, 0x15b, 0x190, 0x193,
     0x1b1, 0x1b2, 0x211, 0x212, 0x213, 0x214, 0x22f, 0x87ac]
 
+
 def scrub(file_in, file_out):
     open(file_out, 'wb').close()
     stripped = cStringIO.StringIO()
     with open(file_in, 'rb') as inp:
-        b_ord = inp.read(2)
-        if b_ord != 'II' and b_ord != 'MM':
+        endi = inp.read(2)
+        if endi != 'II' and endi != 'MM':
             raise Exception("Invalid TIFF file")
-        magic = read(inp, 2, b_ord)
-        if magic != '\x00\x2A': #42 in decimal
+        magic = get_value(read(inp, 2), endi)
+        if magic != 42:
             raise Exception("Invalid TIFF file")
-
-        print "TIFF file"
-        print " Byte order: %s" % b_ord
-        ifd_offset = get_value(read(inp, 4, b_ord))
-        while ifd_offset is not None and ifd_offset != 0:
-            print " IFD at: %d" % ifd_offset
-            inp.seek(ifd_offset, os.SEEK_SET)
-            entries = get_value(read(inp, 2, b_ord))
-            print "\n# Directory entries: %d" % entries
-            for i in xrange(0, entries):
-                print "Entry %d" % i
-                tag = get_value(read(inp, 2, b_ord))
-                print " - Tag: %d" % tag
-                
-                vtype = get_value(read(inp, 2, b_ord))
-                print " - Type: %d" % vtype
-                
-                val_count = get_value(read(inp, 4, b_ord))
-                print " - Count: %d" % val_count
-                
-                val_offset = get_value(read(inp, 4, b_ord))
-                print " - Offset: %d" % val_offset
-            ifd_offset = get_value(read(inp, 4, b_ord)) 
+        walk_tiff(inp, endi)
 
     with open(file_out, 'wb') as output:
         output.write(stripped.getvalue())
     stripped.close()
 
-def read(stream, count, b_order):
+def walk_tiff(inp, endi):
+    ifd_offset = get_value(read(inp, 4), endi)
+    while ifd_offset is not None and ifd_offset != 0:
+        print " IFD at: %d" % ifd_offset
+        inp.seek(ifd_offset, os.SEEK_SET)
+        entries = get_value(read(inp, 2), endi)
+        print "\n# Directory entries: %d" % entries
+        for i in xrange(0, entries):
+            print "Entry %d" % i
+            read_field(inp, endi)
+        ifd_offset = get_value(read(inp, 4), endi) 
+
+def read_field(inp, endi):
+    tag = get_value(read(inp, 2),endi)
+    val_type = get_value(read(inp, 2), endi)
+    count = get_value(read(inp, 4), endi) #Vals
+    length = count * TYPE_L[val_type] #Length in bytes of data
+    offset = read(inp, 4)
+    print "Tag: %d, Type: %d" % (tag, val_type) 
+    if length <= 4:
+        print "Value: %s " % offset
+    else:
+        at_in_file = inp.tell()
+        inp.seek(get_value(offset, endi), os.SEEK_SET)
+        for i in xrange(0, count):
+            data = read(inp, TYPE_L[val_type])
+            print data, ", ",
+        print ""        
+        inp.seek(at_in_file, os.SEEK_SET)
+
+def read(stream, count):
     """Read <count> bytes from the file object <stream> with
        an the given endianness (MM for big, II for little)
        
@@ -69,16 +78,13 @@ def read(stream, count, b_order):
     data = stream.read(count)
     if len(data) == 0:
         return None
-    if b_order == 'MM':
-        return data
-    elif b_order == 'II':
-        return reduce(lambda acc, new: "%s%s" % (new, acc), data)
-    else:
-        raise Exception("Invalid byte-order passed")
+    return data
 
-def get_value(bytes_):
+def get_value(bytes_, endi):
     if bytes_ is None:
         return None
+    if endi == "II":
+        bytes_ = reduce(lambda acc, new: "%s%s" % (new, acc), bytes_)
     sum_ = 0
     for byte in bytes_:
         sum_ = (sum_ << 8) + ord(byte)
