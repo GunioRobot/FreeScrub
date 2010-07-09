@@ -24,66 +24,94 @@ GOOD_TAGS = \
 
 
 def scrub(file_in, file_out):
+    #Verify file_out is writeable before we try scrubbing file_in
     open(file_out, 'wb').close()
-    stripped = cStringIO.StringIO()
+    
+    scrubbed = cStringIO.StringIO()
     with open(file_in, 'rb') as inp:
-        endi = inp.read(2)
-        if endi != 'II' and endi != 'MM':
-            raise Exception("Invalid TIFF file")
-        magic = get_value(read(inp, 2), endi)
-        if magic != 42:
-            raise Exception("Invalid TIFF file")
-        walk_tiff(inp, endi)
+        byte_order = validate_tiff(inp)
+        if byte_order is None:
+            raise Exception("Invalid TIFF!")
+        walk_tiff(inp, byte_order)
 
     with open(file_out, 'wb') as output:
-        output.write(stripped.getvalue())
-    stripped.close()
+        output.write(scrubbed.getvalue())
+    scrubbed.close()
 
-def walk_tiff(inp, endi):
-    ifd_offset = get_value(read(inp, 4), endi)
+def validate_tiff(inp):
+    """Validate the given file
+    
+    If valid, the endiananess is returned. Otherwise, None is returned
+    """
+    byte_order = inp.read(2)
+    if byte_order != 'II' and byte_order != 'MM':
+        return None
+    magic = get_value(read(inp, 2), byte_order)
+    if magic == 42:
+        return byte_order
+    else:
+        return None
+
+
+def walk_tiff(inp, byte_order):
+    ifd_offset = get_value(read(inp, 4), byte_order)
     while ifd_offset is not None and ifd_offset != 0:
         print " IFD at: %d" % ifd_offset
         inp.seek(ifd_offset, os.SEEK_SET)
-        entries = get_value(read(inp, 2), endi)
+        entries = get_value(read(inp, 2), byte_order)
         print "\n# Directory entries: %d" % entries
         for i in xrange(0, entries):
-            print "Entry %d" % i
-            read_field(inp, endi)
-        ifd_offset = get_value(read(inp, 4), endi) 
+#            print "Entry %d" % i
+            read_field(inp, byte_order)
+        ifd_offset = get_value(read(inp, 4), byte_order) 
 
-def read_field(inp, endi):
-    tag = get_value(read(inp, 2),endi)
-    val_type = get_value(read(inp, 2), endi)
-    count = get_value(read(inp, 4), endi) #Vals
+def read_field(inp, byte_order):
+    tag = get_value(read(inp, 2),byte_order)
+    val_type = get_value(read(inp, 2), byte_order)
+    count = get_value(read(inp, 4), byte_order) #Vals
     length = count * TYPE_L[val_type] #Length in bytes of data
     offset = read(inp, 4)
-    print "Tag: %d, Type: %d" % (tag, val_type) 
-    if length <= 4:
-        print "Value: %s " % offset
-    else:
-        at_in_file = inp.tell()
-        inp.seek(get_value(offset, endi), os.SEEK_SET)
-        for i in xrange(0, count):
-            data = read(inp, TYPE_L[val_type])
-            print data, ", ",
-        print ""        
-        inp.seek(at_in_file, os.SEEK_SET)
+    print "Tag: 0x%x" % tag 
+    if False:   #Don't do this right now
+        if length <= 4:
+            print "Value: %s " % offset
+        else:
+            at_in_file = inp.tell()
+            inp.seek(get_value(offset, byte_order), os.SEEK_SET)
+            for i in xrange(0, count):
+                data = read(inp, TYPE_L[val_type])
+                print data, ", ",
+            print ""        
+            inp.seek(at_in_file, os.SEEK_SET)
 
-def read(stream, count):
-    """Read <count> bytes from the file object <stream> with
-       an the given endianness (MM for big, II for little)
-       
-       Data is returned in big-endian format
-       """
-    data = stream.read(count)
+def read(inp, count):
+    """Read <count> bytes from the file object <inp>"""
+    data = inp.read(count)
     if len(data) == 0:
         return None
     return data
 
-def get_value(bytes_, endi):
+def write_value(out, value, byte_order):
+    """Write <value> to <out> in the appropriate byte order
+    """
+    to_write = ""
+    while(value):
+        byte = value & 0xff
+        if byte_order == "MM":
+            to_write = "%s%s" % (chr(byte), to_write)
+        elif byte_order == "II":
+            to_write = "%s%s" % (to_write, chr(byte))
+        value >>= 8
+    out.write(to_write)
+
+
+def get_value(bytes_, byte_order):
+    """Converts a <bytes_>, a string of hexidecimal values into an integer
+       <byte_order> is either "II" or "MM", representing the endianness of bytes_
+    """
     if bytes_ is None:
         return None
-    if endi == "II":
+    if byte_order == "II":
         bytes_ = reduce(lambda acc, new: "%s%s" % (new, acc), bytes_)
     sum_ = 0
     for byte in bytes_:
