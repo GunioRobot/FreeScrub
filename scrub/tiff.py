@@ -4,15 +4,30 @@
 #All code is released under the simplified (two-clause) BSD license
 """Functions for removing any metadata from a TIFF file"""
 
+from scrubdec import restore_pos
 import cStringIO
 import os
 
 if __name__ == "__main__":
     import sys
 
-#How many bytes each type takes up (there is no 0-type)
+###How many bytes each type takes up (there is no 0-type)
+#1  Byte (unsigned)
+#2  ASCII (\0-terminated)
+#3  Short (unsigned)
+#4  Long (unsigned)
+#5  Rational
+#6  Signed byte
+#7  Undefined (generic byte)
+#8  Signed short
+#9  Signed long
+#10 Signed rational
+#11 Float
+#12 Double
+
 TYPE_L = [1, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8]
-#Tags we don't want to strip. http://www.awaresystems.be/imaging/tiff/tifftags.html
+
+#Tags we don't want to strip.
 GOOD_TAGS = \
     [0xfe, 0xff, 0x100, 0x101, 0x102, 0x102, 0x103, 0x106, 0x107, 0x108, 0x109,
     0x10a, 0x111, 0x112, 0x115, 0x116, 0x117, 0x118, 0x119, 0x11a, 0x11b, 0x11c,
@@ -40,13 +55,12 @@ def scrub(file_in, file_out):
 
 def validate_tiff(inp):
     """Validate the given file
-    
     If valid, the endiananess is returned. Otherwise, None is returned
     """
     byte_order = inp.read(2)
     if byte_order != 'II' and byte_order != 'MM':
         return None
-    magic = get_value(read(inp, 2), byte_order)
+    magic = get_value(inp.read(2), byte_order)
     if magic == 42:
         return byte_order
     else:
@@ -54,23 +68,22 @@ def validate_tiff(inp):
 
 
 def walk_tiff(inp, byte_order):
-    ifd_offset = get_value(read(inp, 4), byte_order)
+    ifd_offset = get_value(inp.read(4), byte_order)
     while ifd_offset is not None and ifd_offset != 0:
         print " IFD at: %d" % ifd_offset
         inp.seek(ifd_offset, os.SEEK_SET)
-        entries = get_value(read(inp, 2), byte_order)
+        entries = get_value(inp.read(2), byte_order)
         print "\n# Directory entries: %d" % entries
         for i in xrange(0, entries):
-#            print "Entry %d" % i
             read_field(inp, byte_order)
-        ifd_offset = get_value(read(inp, 4), byte_order) 
+        ifd_offset = get_value(inp.read(4), byte_order) 
 
 def read_field(inp, byte_order):
-    tag = get_value(read(inp, 2),byte_order)
-    val_type = get_value(read(inp, 2), byte_order)
-    count = get_value(read(inp, 4), byte_order) #Vals
+    tag = get_value(inp.read(2),byte_order)
+    val_type = get_value(inp.read(2), byte_order)
+    count = get_value(inp.read(4), byte_order) #Vals
     length = count * TYPE_L[val_type] #Length in bytes of data
-    offset = read(inp, 4)
+    offset = inp.read(4)
     print "Tag: 0x%x %s" % (tag, tag in GOOD_TAGS) 
     if False:   #Don't do this right now
         if length <= 4:
@@ -79,22 +92,17 @@ def read_field(inp, byte_order):
             at_in_file = inp.tell()
             inp.seek(get_value(offset, byte_order), os.SEEK_SET)
             for i in xrange(0, count):
-                data = read(inp, TYPE_L[val_type])
+                data = inp.read(TYPE_L[val_type])
                 print data, ", ",
             print ""        
             inp.seek(at_in_file, os.SEEK_SET)
-
-def read(inp, count):
-    """Read <count> bytes from the file object <inp>"""
-    data = inp.read(count)
-    if len(data) == 0:
-        return None
-    return data
 
 def write_value(out, value, byte_order):
     """Write <value> to <out> in the appropriate byte order
     """
     to_write = ""
+    
+    #Build the string
     while(value):
         byte = chr(value & 0xff)
         if byte_order == "MM":
@@ -102,17 +110,22 @@ def write_value(out, value, byte_order):
         elif byte_order == "II":
             to_write = "%s%s" % (to_write, byte)
         value >>= 8
+
     out.write(to_write)
 
 
 def get_value(bytes_, byte_order):
     """Converts a <bytes_>, a string of hexidecimal values into an integer
-       <byte_order> is either "II" or "MM", representing the endianness of bytes_
+       <byte_order> is either "II" or "MM", representing the endianness of 
+       bytes_
     """
     if bytes_ is None:
         return None
+    
+    #Reverse the order of bytes_ if it is little-endian
     if byte_order == "II":
         bytes_ = reduce(lambda acc, new: "%s%s" % (new, acc), bytes_)
+    
     sum_ = 0
     for byte in bytes_:
         sum_ = (sum_ << 8) + ord(byte)
