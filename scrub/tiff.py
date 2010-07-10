@@ -27,17 +27,39 @@ if __name__ == "__main__":
 
 TYPE_L = [1, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8]
 
-GOOD_TAGS = \
-    [0xfe, 0xff, 0x100, 0x101, 0x102, 0x102, 0x103, 0x106, 0x107, 0x108, 0x109,
-    0x10a, 0x111, 0x112, 0x115, 0x116, 0x117, 0x118, 0x119, 0x11a, 0x11b, 0x11c,
-    0x120, 0x121, 0x122, 0x123, 0x128, 0x140, 0x152]# + \
-#    [0x11d, 0x11e, 0x11f, 0x124, 0x125, 0x12d, 0x13d, 0x13e, 0x13f, 0x141,
-#    0x142, 0x143, 0x144, 0x145, 0x146, 0x147, 0x148, 0x14a, 0x150, 0x153, 
-#    0x154, 0x155, 0x156, 0x157, 0x158, 0x159, 0x15a, 0x15b, 0x190, 0x193,
-#    0x1b1, 0x1b2, 0x211, 0x212, 0x213, 0x214, 0x22f, 0x87ac]
-
+GOOD_TAGS = {
+    'NewSubfileType' : 0xfe,
+    'SubfileType' : 0xff,
+    'ImageWidth' : 0x100,
+    'ImageLength' : 0x101,
+    'BitsPerSample' : 0x102,
+    'Compression' : 0x103,
+    'PI' : 0x106,
+    'Threshholding' : 0x107,
+    'CellWidth' : 0x108,
+    'CellLength' : 0x109,
+    'FillOrder' : 0x10a,
+    'StripOffsets' : 0x111,
+    'Orientation' : 0x112,
+    'SamplesPerPixel' : 0x115,
+    'RowsPerStrip' : 0x116,
+    'StripByteCounts' : 0x117,
+    'MinSampleValue' : 0x118,
+    'MaxSampleValue' : 0x119,
+    'XRes' : 0x11a,
+    'YRes' : 0x11b,
+    'PConfig' : 0x11c,
+    'XPos' : 0x11e,
+    'YPos' : 0x11f,
+    'FreeOffsets' : 0x120,
+    'FreeByteCounts' : 0x121,
+    'GrayResponseUnit' : 0x122,
+    'GrayResponseCurve' : 0x123,
+    'ExtraSamples' : 0x152,
+    }
 #Tags that point to lists of offsets
-OFFSET_TAGS = []
+OFFSET_TAGS = [GOOD_TAGS['StripOffsets'], GOOD_TAGS['FreeOffsets']]
+
 
 def scrub(file_in, file_out):
     """Scrubs a TIFF of any unnecessary metadata"""
@@ -50,7 +72,7 @@ def scrub(file_in, file_out):
             raise Exception("Invalid TIFF!")
         scrubbed.write(byte_order)
         _write_value(scrubbed, 42, 2, byte_order)
-        _walk_tiff(inp, scrubbed, byte_order)
+        update_offsets = _walk_tiff(inp, scrubbed, byte_order)
 
     with file(file_out, 'wb') as output:
         output.write(scrubbed.getvalue())
@@ -72,8 +94,9 @@ def _validate_tiff(inp):
 
 def _walk_tiff(inp, out, byte_order):
     """
-    Walk through all the IFDs and each directory entry
+    Stage 1: Walk through all the IFDs and each directory entry
     """
+    offsets = []
     ifd_offset = inp.read(4)
     out.write(ifd_offset)
     
@@ -89,10 +112,11 @@ def _walk_tiff(inp, out, byte_order):
         entries = get_value(entries, byte_order == 'II')
         
         for i in xrange(0, entries):
-            _read_entry(inp, out, byte_order)
+            offsets += _read_entry(inp, out, byte_order)
         ifd_offset = inp.read(4)
         out.write(ifd_offset)
         ifd_offset = get_value(ifd_offset, byte_order == 'II') 
+    return offsets
 
 def _f_seek(out, where):
     """Seek to the given point. If it's beyond the end of the file,
@@ -143,7 +167,6 @@ def _write_value(out, value, length, byte_order):
             to_write = "%s%s" % ('\x00' * (length - len(to_write)), to_write)
         else:
             to_write = "%s%s" % (to_write, '\x00' * (length - len(to_write)))
-
 
     out.write(to_write)
 
