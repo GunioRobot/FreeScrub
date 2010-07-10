@@ -39,66 +39,84 @@ GOOD_TAGS = \
 
 
 def scrub(file_in, file_out):
-    #Verify file_out is writeable before we try scrubbing file_in
+    """Scrubs a TIFF of any unnecessary metadata"""
     open(file_out, 'wb').close()
     
     scrubbed = cStringIO.StringIO()
     with file(file_in, 'rb') as inp:
-        byte_order = validate_tiff(inp)
+        byte_order = _validate_tiff(inp)
         if byte_order is None:
             raise Exception("Invalid TIFF!")
-        walk_tiff(inp, byte_order)
+        scrubbed.write(byte_order)
+        _write_value(scrubbed, 42, 2, byte_order)
+        _walk_tiff(inp, scrubbed, byte_order)
 
     with file(file_out, 'wb') as output:
         output.write(scrubbed.getvalue())
     scrubbed.close()
 
-def validate_tiff(inp):
-    """Validate the given file
+def _validate_tiff(inp):
+    """Check if the file's magic number indicates TIFFness
     If valid, the endiananess is returned. Otherwise, None is returned
     """
     byte_order = inp.read(2)
     if byte_order != 'II' and byte_order != 'MM':
         return None
-    magic = get_value(inp.read(2), byte_order)
+    magic = _get_value(inp.read(2), byte_order)
     if magic == 42:
         return byte_order
     else:
         return None
 
 
-def walk_tiff(inp, byte_order):
-    ifd_offset = get_value(inp.read(4), byte_order)
+def _walk_tiff(inp, out, byte_order):
+    """
+    Walk through all the IFDs and each directory entry
+    """
+    ifd_offset = inp.read(4)
+    out.write(ifd_offset)
+    
+    ifd_offset = _get_value(ifd_offset, byte_order)
+
     while ifd_offset is not None and ifd_offset != 0:
         print " IFD at: %d" % ifd_offset
         inp.seek(ifd_offset, os.SEEK_SET)
-        entries = get_value(inp.read(2), byte_order)
-        print "\n# Directory entries: %d" % entries
+        _f_seek(out, ifd_offset)
+
+        entries = inp.read(2)
+        out.write(entries)
+        entries = _get_value(entries, byte_order)
+        
         for i in xrange(0, entries):
-            read_field(inp, byte_order)
-        ifd_offset = get_value(inp.read(4), byte_order) 
+            _read_entry(inp, out, byte_order)
+        ifd_offset = inp.read(4)
+        out.write(ifd_offset)
+        ifd_offset = _get_value(ifd_offset, byte_order) 
 
-def read_field(inp, byte_order):
-    tag = get_value(inp.read(2),byte_order)
-    val_type = get_value(inp.read(2), byte_order)
-    count = get_value(inp.read(4), byte_order) #Vals
-    length = count * TYPE_L[val_type] #Length in bytes of data
-    offset = inp.read(4)
-    print "Tag: 0x%x %s" % (tag, tag in GOOD_TAGS) 
-    if False:   #Don't do this right now
-        if length <= 4:
-            print "Value: %s " % offset
-        else:
-            at_in_file = inp.tell()
-            inp.seek(get_value(offset, byte_order), os.SEEK_SET)
-            for i in xrange(0, count):
-                data = inp.read(TYPE_L[val_type])
-                print data, ", ",
-            print ""        
-            inp.seek(at_in_file, os.SEEK_SET)
+def _f_seek(out, where):
+    """Seek to the given point. If it's beyond the end of the file,
+    flood that area with \xff"""
+    out.seek(0, os.SEEK_END)
+    end = out.tell()
+    if (where > end):
+        out.write('\xff' * (where - end))
+    else:
+        out.seek(where, os.SEEK_SET)
 
-def write_value(out, value, byte_order):
-    """Write <value> to <out> in the appropriate byte order
+
+def _read_entry(inp, out, byte_order):
+    """
+    Parse a directory entry
+    """
+    header = inp.read(12)
+    data = inp.read(4)
+    out.write(header)
+    out.write(data)
+
+def _write_value(out, value, length, byte_order):
+    """
+    Write <value> to <out> in the appropriate byte order
+    into a field of <length> bytes
     """
     to_write = ""
     
@@ -107,24 +125,32 @@ def write_value(out, value, byte_order):
         byte = chr(value & 0xff)
         if byte_order == "MM":
             to_write = "%s%s" % (byte, to_write)
-        elif byte_order == "II":
+        else:
             to_write = "%s%s" % (to_write, byte)
         value >>= 8
+
+    #Add padding
+    if len(to_write) < length:
+        if byte_order == "MM":
+            to_write = "%s%s" % ('\x00' * (length - len(to_write)), to_write)
+        else:
+            to_write = "%s%s" % (to_write, '\x00' * (length - len(to_write)))
+
 
     out.write(to_write)
 
 
-def get_value(bytes_, byte_order):
+def _get_value(bytes_, byte_order):
     """Converts a <bytes_>, a string of hexidecimal values into an integer
        <byte_order> is either "II" or "MM", representing the endianness of 
        bytes_
     """
     if bytes_ is None:
         return None
-    
+    print bytes_ 
     #Reverse the order of bytes_ if it is little-endian
     if byte_order == "II":
-        bytes_ = reduce(lambda acc, new: "%s%s" % (new, acc), bytes_)
+        bytes_ = reduce(lambda acc, new: "%s%s" % (new, acc), bytes_, "")
     
     sum_ = 0
     for byte in bytes_:
