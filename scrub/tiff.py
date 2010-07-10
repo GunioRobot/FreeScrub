@@ -4,7 +4,7 @@
 #All code is released under the simplified (two-clause) BSD license
 """Functions for removing any metadata from a TIFF file"""
 
-from scrubdec import restore_pos
+from scommon import restore_pos, get_value
 import cStringIO
 import os
 
@@ -63,7 +63,7 @@ def _validate_tiff(inp):
     byte_order = inp.read(2)
     if byte_order != 'II' and byte_order != 'MM':
         return None
-    magic = _get_value(inp.read(2), byte_order)
+    magic = get_value(inp.read(2), byte_order == 'II')
     if magic == 42:
         return byte_order
     else:
@@ -77,7 +77,7 @@ def _walk_tiff(inp, out, byte_order):
     ifd_offset = inp.read(4)
     out.write(ifd_offset)
     
-    ifd_offset = _get_value(ifd_offset, byte_order)
+    ifd_offset = get_value(ifd_offset, byte_order == 'II')
 
     while ifd_offset is not None and ifd_offset != 0:
         print " IFD at: %d" % ifd_offset
@@ -86,13 +86,13 @@ def _walk_tiff(inp, out, byte_order):
 
         entries = inp.read(2)
         out.write(entries)
-        entries = _get_value(entries, byte_order)
+        entries = get_value(entries, byte_order == 'II')
         
         for i in xrange(0, entries):
             _read_entry(inp, out, byte_order)
         ifd_offset = inp.read(4)
         out.write(ifd_offset)
-        ifd_offset = _get_value(ifd_offset, byte_order) 
+        ifd_offset = get_value(ifd_offset, byte_order == 'II') 
 
 def _f_seek(out, where):
     """Seek to the given point. If it's beyond the end of the file,
@@ -112,9 +112,9 @@ def _read_entry(inp, out, byte_order):
     header = inp.read(12)
     data = inp.read(4)
 
-    tag = _get_value(header[0:2], byte_order)
-    type_ = _get_value(header[2:4], byte_order)
-    count = _get_value(header[4:8], byte_order)
+    tag = get_value(header[0:2], byte_order == 'II')
+    type_ = get_value(header[2:4], byte_order == 'II')
+    count = get_value(header[4:8], byte_order == 'II')
 
     length = count * TYPE_L[type_]
     
@@ -146,24 +146,6 @@ def _write_value(out, value, length, byte_order):
 
 
     out.write(to_write)
-
-
-def _get_value(bytes_, byte_order):
-    """Converts a <bytes_>, a string of hexidecimal values into an integer
-       <byte_order> is either "II" or "MM", representing the endianness of 
-       bytes_
-    """
-    if bytes_ is None:
-        return None
-    print bytes_ 
-    #Reverse the order of bytes_ if it is little-endian
-    if byte_order == "II":
-        bytes_ = reduce(lambda acc, new: "%s%s" % (new, acc), bytes_, "")
-    
-    sum_ = 0
-    for byte in bytes_:
-        sum_ = (sum_ << 8) + ord(byte)
-    return sum_
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
