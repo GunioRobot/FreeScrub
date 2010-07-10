@@ -110,6 +110,13 @@ def _read_entry(inp, out, byte_order):
     """
     header = inp.read(12)
     data = inp.read(4)
+
+    tag = _get_value(header[0:2], byte_order)
+    type_ = _get_value(header[2:4], byte_order)
+    count = _get_value(header[4:8], byte_order)
+
+    length = count * TYPE_L[type_]
+    
     out.write(header)
     out.write(data)
 
