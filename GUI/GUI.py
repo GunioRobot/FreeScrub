@@ -88,7 +88,7 @@ class Rate(Size):
         return '%s/s'% Size.__str__(self, precision=None)
 
 
-class Duration(float): 
+class Duration(float):
     """displays duration in human-readable format"""
     def __str__(value):
         if value > 365 * 24 * 60 * 60:
@@ -144,7 +144,7 @@ class Window(gtk.Window):
             print loc
             self.set_icon_from_file(loc)
         except Exception, e:
-            return 
+            return
             #log.warning(e)
 
 
@@ -235,8 +235,8 @@ class OpenMultiFileSelection():
             filter.add_pattern("*.jpg")
             filter.add_mime_type("image/png")
             filter.add_pattern("*.png")
-            filter.add_mime_type("image/tiff")
-            filter.add_pattern("*.tiff")
+#            filter.add_mime_type("image/tiff")
+#            filter.add_pattern("*.tiff")
             filter.add_mime_type("application/pdf")
             filter.add_pattern("*.pdf")
             dialog.add_filter(filter)

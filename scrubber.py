@@ -18,7 +18,6 @@ from GUI.GUI import *
 
 from scrub import jpeg
 from scrub import png
-from scrub import tiff
 from scrub import pdf
 
 if os.name != 'nt':
@@ -276,9 +275,6 @@ class ProgressDialog(gtk.Dialog):
                 #JPEG Scrubbing
                 jpeg.scrub(file, file)
                 pass
-            elif type == "tiff" or type == "TIFF":
-                #TIFF Scrubbing
-                tiff.scrub(file, file)
             elif type == ".png" or type == ".PNG":
                 #PNG Scrub
                 png.scrub(file, file)
