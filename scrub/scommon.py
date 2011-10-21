@@ -5,7 +5,7 @@
 
 import os
 def restore_pos(file_index):
-    """Decorator that ensures the position in the file before and after the 
+    """Decorator that ensures the position in the file before and after the
        function call remains the same. Takes one argument: which argument
        contains the file in question.
        """
